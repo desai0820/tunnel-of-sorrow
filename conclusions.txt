@@ -1,0 +1,77 @@
+TUNNEL OF SORROW: CONCLUSIONS
+==============================
+
+GOAL
+----
+Predict the maximum intraday SPX move (from open) using the VIX opening level.
+Use this to set expected move bands for day trading.
+
+
+THE FORMULA
+-----------
+Given VIX at the open, the expected max SPX % move from open is:
+
+  move% = 0.1953 + 0.0659 * (VIX - 5) + 0.000440 * (VIX - 5)^2
+
+This is a 75th percentile quadratic quantile regression, fit on 5,583 trading
+days from 2004-2026. It contains 75% of observed daily max moves.
+
+To convert to a decimal multiplier for price levels:
+
+  move  = 0.001953 + 0.000659 * (VIX - 5) + 0.00000440 * (VIX - 5)^2
+  top   = SPX_open * (1 + move)
+  bottom = SPX_open * (1 - move)
+
+
+WHY THIS FORMULA
+----------------
+1. VIX - 5 (zero-basing): The regression x-intercept is 5.0 across multiple
+   data subsets. Subtracting 5 eliminates the negative intercept and makes the
+   model proportional -- at VIX = 5, expected move = ~0%.
+
+2. Quadratic term (vol-of-vol): At low VIX, residual scatter is tight (std
+   0.33% at VIX 10-15). At high VIX, it fans out 6x (std 2.10% at VIX 50+).
+   The (VIX-5)^2 term widens the band at elevated VIX to account for this.
+   Without it, the model underpredicts tail moves in crisis regimes.
+
+3. 75th percentile: The mean prediction only contains ~59% of days. The 75th
+   percentile contains 75% -- a better threshold for trading bands where you
+   want most days to stay inside. For tighter or wider bands:
+
+     90th: 0.2947 + 0.0874*(VIX-5) + 0.000531*(VIX-5)^2  [contains 90%]
+     95th: 0.4042 + 0.0970*(VIX-5) + 0.000806*(VIX-5)^2  [contains 95%]
+
+4. 2004+ data: R^2 improves from 0.447 (full sample) to 0.493 (2004+) by
+   dropping pre-decimalization 1990s data. The slope is stable post-2000,
+   and the 2004+ window still includes GFC and COVID stress tests.
+
+
+QUICK REFERENCE
+---------------
+  VIX     Expected Move (75th)     Band for SPX 5700
+   12          0.54%                5669 - 5731
+   15          0.90%                5649 - 5751
+   18          1.13%                5636 - 5764
+   20          1.28%                5627 - 5773
+   25          1.69%                5604 - 5796
+   30          2.12%                5579 - 5821
+   35          2.57%                5554 - 5846
+   40          3.04%                5527 - 5873
+   50          4.05%                5469 - 5931
+
+Mental math shortcut (linear approximation):
+  move% ~= 0.07 * (VIX - 5)
+  Every 1 point of VIX above 5 adds ~7 bps of expected max move.
+  VIX 20 = ~1.05%. VIX 30 = ~1.75%. VIX 40 = ~2.45%.
+  Then add ~20-30% buffer at VIX 30+ for vol-of-vol.
+
+
+VS. THE ORIGINAL TOS SCRIPT
+----------------------------
+Old: move = 0.000609 * (VIX - 8) + 0.0037
+New: move = 0.001953 + 0.000659 * (VIX - 5) + 0.00000440 * (VIX - 5)^2
+
+The old formula is ~13% too flat at high VIX and uses a floor of 8 instead
+of the data-derived 5. It contains ~65% of daily moves. The new formula
+matches at normal VIX (15-25), is slightly tighter at low VIX, and widens
+appropriately at high VIX where the old formula was too narrow.
