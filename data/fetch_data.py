@@ -41,6 +41,19 @@ def fetch_spx():
     return spx
 
 
+def fetch_spx_intraday():
+    """Fetch SPX 5-minute intraday data (~60 days of history)."""
+    print("Fetching SPX intraday (5m) data...")
+    df = yf.download("^GSPC", period="60d", interval="5m", auto_adjust=True, progress=False)
+    df = df[["Open", "High", "Low", "Close"]].copy()
+    df.columns = ["open", "high", "low", "close"]
+    df.index.name = "datetime"
+    df = df.reset_index()
+    df["datetime"] = pd.to_datetime(df["datetime"])
+    print(f"  SPX intraday: {len(df)} rows ({df['datetime'].min()} to {df['datetime'].max()})")
+    return df
+
+
 def create_tables(engine):
     """Create tables if they don't exist."""
     with engine.begin() as conn:
@@ -62,22 +75,34 @@ def create_tables(engine):
                 close REAL NOT NULL
             )
         """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS spx_intraday (
+                datetime TIMESTAMP PRIMARY KEY,
+                open REAL NOT NULL,
+                high REAL NOT NULL,
+                low REAL NOT NULL,
+                close REAL NOT NULL
+            )
+        """))
 
 
-def load_to_db(engine, vix_df, spx_df):
+def load_to_db(engine, vix_df, spx_df, intraday_df=None):
     """Write dataframes to SQLite, replacing any existing data."""
     vix_df.to_sql("vix", engine, if_exists="replace", index=False)
     spx_df.to_sql("spx", engine, if_exists="replace", index=False)
+    if intraday_df is not None:
+        intraday_df.to_sql("spx_intraday", engine, if_exists="replace", index=False)
     print(f"\nLoaded data into {DB_PATH}")
 
 
 def verify(engine):
     """Print summary stats to confirm data integrity."""
     with engine.connect() as conn:
-        for table in ["vix", "spx"]:
+        for table in ["vix", "spx", "spx_intraday"]:
+            date_col = "datetime" if table == "spx_intraday" else "date"
             row_count = conn.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar()
-            min_date = conn.execute(text(f"SELECT MIN(date) FROM {table}")).scalar()
-            max_date = conn.execute(text(f"SELECT MAX(date) FROM {table}")).scalar()
+            min_date = conn.execute(text(f"SELECT MIN({date_col}) FROM {table}")).scalar()
+            max_date = conn.execute(text(f"SELECT MAX({date_col}) FROM {table}")).scalar()
             nulls = conn.execute(
                 text(f"SELECT COUNT(*) FROM {table} WHERE open IS NULL OR close IS NULL")
             ).scalar()
@@ -89,9 +114,10 @@ def main():
 
     vix_df = fetch_vix()
     spx_df = fetch_spx()
+    intraday_df = fetch_spx_intraday()
 
     create_tables(engine)
-    load_to_db(engine, vix_df, spx_df)
+    load_to_db(engine, vix_df, spx_df, intraday_df)
 
     print("\nVerification:")
     verify(engine)
