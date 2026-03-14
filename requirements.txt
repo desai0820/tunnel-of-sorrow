@@ -5,3 +5,5 @@ scipy
 statsmodels
 sqlalchemy
 matplotlib
+streamlit
+plotly
