@@ -680,23 +680,19 @@ def main():
         if "daily_days" not in st.session_state:
             st.session_state["daily_days"] = 100
         btn_cols = st.columns(4)
-        for i, (label, ndays) in enumerate({"100D": 100, "365D": 365, "Max": None}.items()):
+        # Max computes total trading days in the dataset
+        total_days = (end_date - start_date).days
+        for i, (label, ndays) in enumerate({"100D": 100, "365D": 365, "Max": total_days}.items()):
             if btn_cols[i].button(label, use_container_width=True, key=f"daily_{label}"):
-                if ndays is None:
-                    st.session_state["chart_start"] = start_date
-                else:
-                    st.session_state["daily_days"] = ndays
-                    st.session_state["chart_start"] = max(start_date, end_date - timedelta(days=int(ndays * 1.4)))
-                st.session_state["chart_end"] = end_date
+                st.session_state["daily_days"] = ndays
                 st.rerun()
         with btn_cols[3]:
             st.number_input("Days", min_value=1, max_value=9999, step=1, key="daily_days", label_visibility="collapsed")
-            if st.session_state.get("chart_start") is None:
-                st.session_state["chart_start"] = max(start_date, end_date - timedelta(days=int(st.session_state["daily_days"] * 1.4)))
-                st.session_state["chart_end"] = end_date
 
-        chart_start = st.session_state.get("chart_start", max(start_date, end_date - timedelta(days=140)))
-        chart_end = st.session_state.get("chart_end", end_date)
+        # Always compute chart window from daily_days
+        ndays = st.session_state["daily_days"]
+        chart_start = max(start_date, end_date - timedelta(days=int(ndays * 1.4)))
+        chart_end = end_date
 
         render_daily_chart(filtered_df, params, containment, (chart_start, chart_end))
 
