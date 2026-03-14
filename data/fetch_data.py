@@ -5,17 +5,13 @@ Data sources (via yfinance):
   - ^VIX: CBOE Volatility Index (open, high, low, close)
   - ^GSPC: S&P 500 Index (open, close, high, low)
 
-Scheduled to run daily at 5:00 PM via macOS launchd.
-Plist: ~/Library/LaunchAgents/com.tunnelofsorrow.fetchdata.plist
-Logs:  data/fetch_data.log
+Scheduled daily at 5:00 PM ET via GitHub Actions (.github/workflows/daily-fetch.yml).
+Can also be triggered manually from the Actions tab on GitHub.
 
-Manual run:
-  launchctl start com.tunnelofsorrow.fetchdata
-  — or —
+Local manual run:
   cd data && python3 fetch_data.py
 """
 
-import sys
 import yfinance as yf
 import pandas as pd
 from sqlalchemy import create_engine, text
