@@ -4,6 +4,15 @@ Fetch historical VIX and SPX data and store in a SQLite database.
 Data sources (via yfinance):
   - ^VIX: CBOE Volatility Index (open, high, low, close)
   - ^GSPC: S&P 500 Index (open, close, high, low)
+
+Scheduled to run daily at 5:00 PM via macOS launchd.
+Plist: ~/Library/LaunchAgents/com.tunnelofsorrow.fetchdata.plist
+Logs:  data/fetch_data.log
+
+Manual run:
+  launchctl start com.tunnelofsorrow.fetchdata
+  — or —
+  cd data && python3 fetch_data.py
 """
 
 import sys
