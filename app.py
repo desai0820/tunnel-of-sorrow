@@ -306,7 +306,7 @@ def render_daily_chart(df, params, stats, chart_window):
     latest = visible.iloc[-1]
     move_pct = latest["move_pct"]
     header_text = (
-        f"SPX EM: {move_pct / 100:.4f} | "
+        f"Today's SPX EM: {move_pct:.2f}% | "
         f"Top: {latest['upper_bound']:,.2f} | "
         f"Bottom: {latest['lower_bound']:,.2f}"
     )
@@ -458,7 +458,7 @@ def render_intraday_chart(intraday_df, daily_df, params):
     move_val = move_pct[merged["date_key"] == latest_date].mean()
 
     header_text = (
-        f"SPX EM: {move_val / 100:.4f} | "
+        f"Today's SPX EM: {move_val:.2f}% | "
         f"Top: {upper_val:,.2f} | "
         f"Bottom: {lower_val:,.2f}"
     )
