@@ -1,2 +1,6 @@
 # Dependencies
 .venv/
+
+# Data — stored as GitHub Release asset, not in git history
+*.db
+data/fetch_data.log
