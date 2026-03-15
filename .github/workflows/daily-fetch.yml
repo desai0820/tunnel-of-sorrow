@@ -2,7 +2,7 @@ name: Daily Data Refresh
 
 on:
   schedule:
-    # 5:00 PM ET = 22:00 UTC (or 21:00 UTC during daylight saving)
+    # Runs at 22:00 UTC Mon–Fri (5:00 PM ET during standard time, 6:00 PM ET during daylight saving time)
     - cron: '0 22 * * 1-5'  # Mon-Fri only
   workflow_dispatch:  # manual trigger from GitHub UI
 
