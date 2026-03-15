@@ -4,9 +4,14 @@ Fetch historical VIX and SPX data and store in a SQLite database.
 Data sources (via yfinance):
   - ^VIX: CBOE Volatility Index (open, high, low, close)
   - ^GSPC: S&P 500 Index (open, close, high, low)
+
+Scheduled daily via GitHub Actions (.github/workflows/daily-fetch.yml; see workflow for exact UTC schedule and ET equivalent).
+Can also be triggered manually from the Actions tab on GitHub.
+
+Local manual run:
+  cd data && python3 fetch_data.py
 """
 
-import sys
 import yfinance as yf
 import pandas as pd
 from sqlalchemy import create_engine, text
