@@ -680,17 +680,36 @@ def main():
         if "daily_days" not in st.session_state:
             st.session_state["daily_days"] = 100
         btn_cols = st.columns(4)
-        # Max computes total trading days in the dataset
-        total_days = (end_date - start_date).days
-        for i, (label, ndays) in enumerate({"100D": 100, "365D": 365, "Max": total_days}.items()):
+        # Compute Max as the number of available trading days, clamped to the UI limits
+        if filtered_df is not None and not filtered_df.empty and "date" in filtered_df.columns:
+            trading_days = int(filtered_df["date"].nunique())
+        else:
+            trading_days = max((end_date - start_date).days, 1)
+        max_days = min(9999, max(trading_days, 1))
+
+        presets = {
+            "100D": min(100, max_days),
+            "365D": min(365, max_days),
+            "Max": max_days,
+        }
+        for i, (label, ndays) in enumerate(presets.items()):
             if btn_cols[i].button(label, use_container_width=True, key=f"daily_{label}"):
-                st.session_state["daily_days"] = ndays
+                # Clamp to ensure consistency with the number_input bounds
+                st.session_state["daily_days"] = max(1, min(ndays, max_days))
                 st.rerun()
         with btn_cols[3]:
-            st.number_input("Days", min_value=1, max_value=9999, step=1, key="daily_days", label_visibility="collapsed")
+            st.number_input(
+                "Days",
+                min_value=1,
+                max_value=max_days,
+                step=1,
+                key="daily_days",
+                label_visibility="collapsed",
+            )
 
-        # Always compute chart window from daily_days
-        ndays = st.session_state["daily_days"]
+        # Always compute chart window from daily_days (clamped to valid range)
+        ndays = int(st.session_state.get("daily_days", 1))
+        ndays = max(1, min(ndays, max_days))
         chart_start = max(start_date, end_date - timedelta(days=int(ndays * 1.4)))
         chart_end = end_date
 
