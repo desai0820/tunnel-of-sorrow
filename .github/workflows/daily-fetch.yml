@@ -1,5 +1,8 @@
 name: Daily Data Refresh
 
+permissions:
+  contents: write
+
 on:
   schedule:
     # Runs at 22:00 UTC Mon–Fri (5:00 PM ET during standard time, 6:00 PM ET during daylight saving time)
