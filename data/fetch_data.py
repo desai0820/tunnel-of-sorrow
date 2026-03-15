@@ -5,7 +5,7 @@ Data sources (via yfinance):
   - ^VIX: CBOE Volatility Index (open, high, low, close)
   - ^GSPC: S&P 500 Index (open, close, high, low)
 
-Scheduled daily at 5:00 PM ET via GitHub Actions (.github/workflows/daily-fetch.yml).
+Scheduled daily via GitHub Actions (.github/workflows/daily-fetch.yml; see workflow for exact UTC schedule and ET equivalent).
 Can also be triggered manually from the Actions tab on GitHub.
 
 Local manual run:
