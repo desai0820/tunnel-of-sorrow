@@ -13,9 +13,6 @@ concurrency:
   group: data-refresh
   cancel-in-progress: true
 
-permissions:
-  contents: write
-
 jobs:
   fetch:
     runs-on: ubuntu-latest
