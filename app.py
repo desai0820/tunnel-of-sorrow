@@ -4,11 +4,18 @@ Interactive Tunnel of Sorrow visualization dashboard.
 Overlay projected expected-move bands on SPX price charts to visually validate
 and iterate on formula coefficients.
 
-Usage: streamlit run app.py
+Usage: 
+cd "/Users/suneetdesai/Desktop/Personal Projects/Tunnel of Sorrow"
+python3 -m streamlit run app.py
+
 """
 
+import os
 import sqlite3
+import subprocess
+import sys
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
@@ -59,17 +66,91 @@ CANDLE_DN = "#ef5350"    # muted red
 
 
 # ---------------------------------------------------------------------------
+# Auto-refresh stale data
+# ---------------------------------------------------------------------------
+
+
+def _active_db_path():
+    return DB_PATH if os.path.exists(DB_PATH) else DATA_DB_PATH
+
+
+def _db_mtime():
+    """DB file modification time — used to invalidate caches after a refresh."""
+    try:
+        return os.path.getmtime(_active_db_path())
+    except OSError:
+        return None
+
+
+def _last_expected_trading_date():
+    """Most recent weekday whose daily bar should be in the DB (ET-based)."""
+    now = datetime.now(ZoneInfo("America/New_York"))
+    d = now.date()
+    if now.hour < 17:  # today's bar isn't reliably available before ~5 PM ET
+        d -= timedelta(days=1)
+    while d.weekday() >= 5:  # roll back over weekends
+        d -= timedelta(days=1)
+    return d
+
+
+def refresh_data_if_stale():
+    """Re-run fetch_data.py if the DB is missing the latest trading day.
+
+    Runs at most once per Streamlit session.
+    """
+    if st.session_state.get("data_refresh_attempted"):
+        return
+    st.session_state["data_refresh_attempted"] = True
+
+    db = _active_db_path()
+    max_date = None
+    if os.path.exists(db):
+        try:
+            conn = sqlite3.connect(db)
+            max_date = conn.execute("SELECT MAX(date) FROM vix").fetchone()[0]
+            conn.close()
+        except Exception:
+            pass
+
+    if max_date is not None:
+        if pd.Timestamp(max_date).date() >= _last_expected_trading_date():
+            return  # already current
+
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "fetch_data.py")
+    # fetch_data.py writes market_data.db relative to cwd, so run it from the
+    # directory of whichever DB the app is actually reading
+    with st.spinner("Market data is stale — fetching latest from Yahoo Finance..."):
+        result = subprocess.run(
+            [sys.executable, script],
+            cwd=os.path.dirname(os.path.abspath(db)) or ".",
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+    if result.returncode == 0:
+        st.cache_data.clear()
+        st.toast("Market data refreshed ✅")
+    else:
+        st.warning(
+            "Automatic data refresh failed — showing existing data. "
+            "Run `cd data && python3 fetch_data.py` manually to update.\n\n"
+            f"```\n{result.stderr[-500:]}\n```"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Data loading (cached)
 # ---------------------------------------------------------------------------
 
 
 @st.cache_data(ttl=3600)
-def load_daily_data():
-    """Load merged VIX+SPX daily data from SQLite."""
-    # Try project root first, then data/ subdirectory
-    import os
+def load_daily_data(db_mtime=None):
+    """Load merged VIX+SPX daily data from SQLite.
 
-    db = DB_PATH if os.path.exists(DB_PATH) else DATA_DB_PATH
+    db_mtime is only used as a cache key so the cache invalidates
+    whenever the DB file is rewritten.
+    """
+    db = _active_db_path()
     conn = sqlite3.connect(db)
     vix = pd.read_sql("SELECT * FROM vix", conn, parse_dates=["date"])
     spx = pd.read_sql("SELECT * FROM spx", conn, parse_dates=["date"])
@@ -82,11 +163,9 @@ def load_daily_data():
 
 
 @st.cache_data(ttl=3600)
-def load_intraday_data():
-    """Load SPX 5-min intraday data from SQLite."""
-    import os
-
-    db = DB_PATH if os.path.exists(DB_PATH) else DATA_DB_PATH
+def load_intraday_data(db_mtime=None):
+    """Load SPX 5-min intraday data from SQLite (db_mtime is a cache key)."""
+    db = _active_db_path()
     conn = sqlite3.connect(db)
     try:
         df = pd.read_sql("SELECT * FROM spx_intraday", conn, parse_dates=["datetime"])
@@ -103,6 +182,16 @@ def load_intraday_data():
 # ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
+
+
+def build_formula_str(a, b, c, floor, offset):
+    """Build a human-readable formula string from current coefficients."""
+    s = f"move% = {a:.4f} + {b:.4f}×(VIX−{floor:.1f})"
+    if c != 0:
+        s += f" + {c:.6f}×(VIX−{floor:.1f})²"
+    if offset != 0:
+        s += f" + {offset:.4f}"
+    return s
 
 
 def sidebar_controls():
@@ -538,23 +627,20 @@ def render_formula_curve(df, params):
             )
         )
 
-    formula_str = (
-        f"move% = {params['a']:.4f} + {params['b']:.4f}*(VIX-{params['floor']:.1f})"
-    )
-    if params["c"] != 0:
-        formula_str += f" + {params['c']:.6f}*(VIX-{params['floor']:.1f})²"
-    if params["offset"] != 0:
-        formula_str += f" + {params['offset']:.4f}"
-
     fig.update_layout(
         **TOS_LAYOUT,
-        title=f"VIX Open → Max Intraday SPX Move | {formula_str}",
+        title=dict(
+            text="VIX Open → Max Intraday SPX Move",
+            font=dict(size=14),
+            y=0.98,
+            yanchor="top",
+        ),
         xaxis_title="VIX Open",
         yaxis_title="Max Abs SPX % Move from Open",
         xaxis_range=[8, 85],
         yaxis_range=[0, 12],
         height=500,
-        margin=dict(t=50, b=40, l=60, r=20),
+        margin=dict(t=70, b=40, l=60, r=20),
     )
 
     st.plotly_chart(fig, use_container_width=True)
@@ -572,8 +658,24 @@ def main():
         layout="wide",
     )
 
+    refresh_data_if_stale()
+
+    params = sidebar_controls()
+
     st.markdown("#### Tunnel of Sorrow — Expected Move Bands")
+
+    # Live formula — updates as sidebar coefficients change
     st.markdown(
+        f'<div style="background:#1a1c24;border:1px solid #444;border-radius:6px;'
+        f'padding:10px 14px;margin-bottom:10px;font-size:15px;color:{BOUND_COLOR};'
+        f'font-family:monospace;font-weight:600">'
+        f'{build_formula_str(params["a"], params["b"], params["c"], params["floor"], params["offset"])}'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("How the formula works"):
+        st.markdown(
         '<div style="font-size:12px;opacity:0.8;line-height:1.6;margin-bottom:8px">'
         "<b>Formula:</b> move% = a + b × (VIX − floor) + c × (VIX − floor)² + offset &nbsp;·&nbsp; "
         "Bounds: SPX_open × (1 ± move%/100)"
@@ -603,13 +705,11 @@ def main():
         '<td style="padding:2px 8px">Flat addition to move % (uniform band shift)</td>'
         '<td style="padding:2px 8px">+0.01 ≈ 0.7 SPX pts; +1.0 ≈ 68 pts wider</td>'
         "</tr></table></div>",
-        unsafe_allow_html=True,
-    )
-
-    params = sidebar_controls()
+            unsafe_allow_html=True,
+        )
 
     # Date range filter in sidebar
-    daily_df = load_daily_data()
+    daily_df = load_daily_data(_db_mtime())
     min_date = daily_df["date"].min().to_pydatetime().date()
     max_date = daily_df["date"].max().to_pydatetime().date()
 
@@ -621,6 +721,7 @@ def main():
         min_value=min_date,
         max_value=max_date,
     )
+    st.sidebar.caption(f"Data through {max_date:%Y-%m-%d}")
 
     # Apply date filter
     if isinstance(date_range, tuple) and len(date_range) == 2:
@@ -666,7 +767,7 @@ def main():
             st.number_input("Days", min_value=1, max_value=999, step=1, key="intraday_days", label_visibility="collapsed")
         intraday_days = st.session_state["intraday_days"]
 
-        intraday_df = load_intraday_data()
+        intraday_df = load_intraday_data(_db_mtime())
         if intraday_df is not None and not intraday_df.empty:
             # Filter to selected number of trading days
             unique_dates = sorted(intraday_df["date"].unique(), reverse=True)
